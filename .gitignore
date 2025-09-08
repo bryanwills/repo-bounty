@@ -1,7 +1,0 @@
-.env
-.DS_Store
-log/
-*.db
-*.csv
-*.err
-*.bak
