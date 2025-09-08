@@ -151,11 +151,12 @@ MODE=digest "$HOME/repo-bounty/.venv/bin/python" collector.py
 - Ensure the bot is **invited** to the target channel (`/invite @YourAppName`).
 - Verify `SLACK_BOT_TOKEN` (or `SLACK_WEBHOOK_URL`) in `.env`.
 - Check logs in `LOG_DIR/digest.log`.
-- Test message to channel with curl 
-```curl -X POST https://slack.com/api/chat.postMessage \
-  -H "Authorization: Bearer xoxb-token" \
-  -H "Content-type: application/json; charset=utf-8" \
-  --data '{"channel":"#bounties","text":"Hourly bounty digest ready ✅"}'
+- Test message to channel with curl
+```bash
+curl -X POST https://slack.com/api/chat.postMessage \
+-H "Authorization: Bearer xoxb-token" \
+-H "Content-type: application/json; charset=utf-8" \
+--data '{"channel":"#bounties","text":"Hourly bounty digest ready ✅"}'
 ```
 Message "Hourly bounty digest ready ✅" should appear in the Slack channel configured.
 - Test with temp fresh database ```BOUNTY_DB=/$HOME/repo-bounty/bounties_test.db MODE=bootstrap python3 collector.py```
