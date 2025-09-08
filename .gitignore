@@ -1,0 +1,10 @@
+.env
+.DS_Store
+log/
+*.db
+*.csv
+*.err
+*.bak
+csv/
+.venv/
+__pycache__/
