@@ -55,8 +55,8 @@ MODE=bootstrap /$HOME/repo-bounty/.venv/bin/python3 collector.py
 **Minimum required in `.env`:**
   - `GITHUB_TOKEN=` your PAT (fine‑grained: Public repos Read; Issues Read‑only; Metadata Read‑only)
   - One Slack delivery path:
-  - `SLACK_BOT_TOKEN=` (recommended; scope `chat:write`, add `files:write` to upload CSVs), **and** invite the bot to the channel
-  - or `SLACK_WEBHOOK_URL=` as a fallback
+    - `SLACK_BOT_TOKEN=` (recommended; scope `chat:write`, add `files:write` to upload CSVs), **and** invite the bot to the channel
+    - or `SLACK_WEBHOOK_URL=` as a fallback
   - Paths in `.env.example` assume `$HOME/repo-bounty`.
 
 ---
