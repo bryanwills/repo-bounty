@@ -13,6 +13,7 @@ Polls GitHub for “bounty-ish” issues and Algora org bounties, stores them in
 ### Prerequisites
 - Python **3.10+** (tested with 3.11)
 - A Slack app (bot token) or an incoming webhook URL
+  - Slack app needs Oauth permissions (recommended; scope `chat:write`, add `files:write` to and `group:read`) and bot token. 
 - A GitHub **Personal Access Token** (fine‑grained or classic)
 
 ---
@@ -82,9 +83,9 @@ MODE=bootstrap "$HOME/repo-bounty/.venv/bin/python" collector.py
 Run collection every 10 minutes and digest hourly
 
 ```bash
-*/10 * * * * MODE=collect /$HOME/repo-bounty/.venv/bin/python /home/$USER/repo-bounty/collector.py 2>>/home/$USER/repo-bounty/log/cron.err
-0 * * * * MODE=digest /$HOME/repo-bounty/.venv/bin/python /home/$USER/repo-bounty/collector.py 2>>/home/$USER/repo-bounty/log/cron.err
-5 2 * * * MODE=langs /$HOME/repo-bounty/.venv/bin/python /home/$USER/repo-bounty/collector.py 2>>/home/$USER/repo-bounty/log/cron.err
+*/10 * * * * MODE=collect /$HOME/repo-bounty/.venv/bin/python /$HOME/repo-bounty/collector.py 2>>/$HOME/repo-bounty/log/cron.err
+0 * * * * MODE=digest /$HOME/repo-bounty/.venv/bin/python /$HOME/repo-bounty/collector.py 2>>/$HOME/repo-bounty/log/cron.err
+5 2 * * * MODE=langs /$HOME/repo-bounty/.venv/bin/python /$HOME/repo-bounty/collector.py 2>>/$HOME/repo-bounty/log/cron.err
 ```
 
 ---
@@ -150,7 +151,7 @@ MODE=digest "$HOME/repo-bounty/.venv/bin/python" collector.py
 - Ensure the bot is **invited** to the target channel (`/invite @YourAppName`).
 - Verify `SLACK_BOT_TOKEN` (or `SLACK_WEBHOOK_URL`) in `.env`.
 - Check logs in `LOG_DIR/digest.log`.
-- Test with temp fresh database ```BOUNTY_DB=/$USER/repo-bounty/bounties_test.db MODE=bootstrap python3 collector.py```
+- Test with temp fresh database ```BOUNTY_DB=/$HOME/repo-bounty/bounties_test.db MODE=bootstrap python3 collector.py```
 
 **`not_in_channel` or `channel_not_found`**
 - Invite the bot to the channel, or use a **channel ID** instead of `#name`.
