@@ -63,23 +63,23 @@ MODE=bootstrap /$HOME/repo-bounty/.venv/bin/python3 collector.py
 
 #### 4) Running script to backfill info and send to Slack and csv file.
 
-#### Collect and send a single digest for the last `BOOTSTRAP_DAYS` (defaults to 7):
+Collect and send a single digest for the last `BOOTSTRAP_DAYS` (defaults to 7):
 
 ```bash
 MODE=bootstrap "$HOME/repo-bounty/.venv/bin/python" collector.py
 ```
 
-#### - Posts a Slack digest and writes a timestamped CSV (e.g., `bounty_digest_MMDDYYYY_HHMM.csv`) into `CSV_DIR`.
-#### - Marks those rows as **notified** so hourly digests won’t resend them.
+- Posts a Slack digest and writes a timestamped CSV (e.g., `bounty_digest_MMDDYYYY_HHMM.csv`) into `CSV_DIR`.
+- Marks those rows as **notified** so hourly digests won’t resend them.
 
-#### **If the backfill looks sparse**, set `USE_LANGUAGE_FILTER=false` in `.env` and run bootstrap again
-#### (We search on `(created OR updated)`; disabling the language filter broadens results.)
+**If the backfill looks sparse**, set `USE_LANGUAGE_FILTER=false` in `.env` and run bootstrap again
+(We search on `(created OR updated)`; disabling the language filter broadens results.)
 
 ---
 
 #### 5) Create cronjobs if desired
 
-#### Run collection every 10 minutes and digest hourly
+Run collection every 10 minutes and digest hourly
 
 ```bash
 */10 * * * * MODE=collect /$HOME/repo-bounty/.venv/bin/python /home/$USER/repo-bounty/collector.py 2>>/home/$USER/repo-bounty/log/cron.err
@@ -171,6 +171,3 @@ MODE=digest "$HOME/repo-bounty/.venv/bin/python" collector.py
 
 **CSV not uploaded to Slack**
 - You need `files:write` on the bot and `UPLOAD_CSV_TO_SLACK=true`.
-
-
-
