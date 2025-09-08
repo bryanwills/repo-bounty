@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os, re, csv, json, time, sqlite3, pathlib, urllib.parse, requests
+import os, re, csv, json, time, sqlite3, pathlib, urllib.parse, requests, logging
 from datetime import datetime, timedelta, timezone
 from collections import Counter
 
@@ -12,7 +12,7 @@ try:
 except Exception:
     pass
 
-# --------- mini helpers ---------
+# --------- helpers ---------
 def env_bool(name: str, default: bool=False) -> bool:
     return str(os.getenv(name, "true" if default else "false")).lower() in ("1","true","yes","y","on")
 
@@ -29,11 +29,24 @@ def _clean_repos(csv_list):
     cleaned = []
     for r in csv_list:
         r = r.strip().strip('"').strip("'")
-        if not r or r.startswith("#"):
+        if not r or r.startswith("#"):  # allow comments in .env
             continue
         if re.match(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$', r):
             cleaned.append(r)
     return cleaned
+
+def chunk_text(text: str, limit: int):
+    """Split long text into chunks <= limit, preferring line breaks."""
+    chunks = []
+    s = text
+    while s:
+        if len(s) <= limit:
+            chunks.append(s); break
+        cut = s.rfind("\n", 0, limit)
+        if cut <= 0: cut = limit
+        chunks.append(s[:cut])
+        s = s[cut:].lstrip()
+    return chunks
 
 # --------- required config (.env) ---------
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
@@ -54,9 +67,7 @@ LABELS              = env_csv("LABELS", "bounty,💎 Bounty,reward,algora")
 REPOS_LIST          = _clean_repos(env_csv("REPOS", ""))
 WINDOW_MINUTES      = int(os.getenv("WINDOW_MINUTES", "12"))
 
-# Bootstrap lookback (used only by MODE=bootstrap)
 BOOTSTRAP_DAYS      = int(os.getenv("BOOTSTRAP_DAYS", "7"))
-
 ALGORA_ORGS         = env_csv("ALGORA_ORGS", "")
 
 SLACK_CHANNEL       = os.getenv("SLACK_CHANNEL", "#bounties")
@@ -65,12 +76,24 @@ DIGEST_MIN_COUNT    = int(os.getenv("DIGEST_MIN_COUNT", "1"))
 MAX_ITEMS_IN_DIGEST = int(os.getenv("MAX_ITEMS_IN_DIGEST", "50"))
 MAX_SLACK_CHARS     = int(os.getenv("MAX_SLACK_CHARS", "3500"))
 POST_LONG_AS_THREAD = env_bool("POST_LONG_AS_THREAD", True)
+SLACK_UNFURL        = env_bool("SLACK_UNFURL", True)  # set false to suppress rich link previews
 
 WRITE_CSV           = env_bool("WRITE_CSV", True)
 CSV_DIR             = os.getenv("CSV_DIR", "./bounty_csv")
 UPLOAD_CSV_TO_SLACK = env_bool("UPLOAD_CSV_TO_SLACK", False)
 
 DB_PATH             = os.getenv("BOUNTY_DB", os.path.join(os.path.dirname(__file__), "bounties.db"))
+
+# --------- logging ---------
+LOG_DIR   = os.getenv("LOG_DIR", os.path.join(os.path.dirname(__file__), "log"))
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+pathlib.Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    filename=os.path.join(LOG_DIR, f"{MODE}.log"),
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger("bounty")
 
 # --------- DB ---------
 def db():
@@ -86,7 +109,6 @@ def db():
     conn.execute("""CREATE TABLE IF NOT EXISTS meta(
         k TEXT PRIMARY KEY, v TEXT
     )""")
-    # tiny migrations
     cols = {row[1] for row in conn.execute("PRAGMA table_info(pending)")}
     if "amount"   not in cols: conn.execute("ALTER TABLE pending ADD COLUMN amount REAL")
     if "currency" not in cols: conn.execute("ALTER TABLE pending ADD COLUMN currency TEXT")
@@ -103,7 +125,7 @@ def meta_set(conn, k, v):
     conn.execute("INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)", (k, json.dumps(v)))
     conn.commit()
 
-# --------- languages from your profile ---------
+# --------- languages from profile ---------
 def fetch_profile_languages():
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     langs = Counter(); page = 1
@@ -158,12 +180,12 @@ def github_search(languages, since_minutes):
     headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
     r = requests.get(url, headers=headers, timeout=20)
     if r.status_code == 422:
-        print("[GitHub 422] Query:", q)
-        print("[GitHub 422] Response:", r.text[:500])
+        logger.error("[GitHub 422] Query: %s", q)
+        logger.error("[GitHub 422] Response: %s", r.text[:500])
     r.raise_for_status()
     return r.json().get("items", [])
 
-# --------- Algora (per-org API; no created filter available) ---------
+# --------- Algora (per-org API) ---------
 def algora_list():
     if not ALGORA_ORGS:
         return []
@@ -176,7 +198,7 @@ def algora_list():
             try:
                 r = requests.get(url, timeout=20); r.raise_for_status()
             except Exception as e:
-                print(f"[Algora] skip {org}: {e}"); break
+                logger.warning("[Algora] skip %s: %s", org, e); break
             data = r.json()
             for b in data.get("items", []):
                 if b.get("status") != "active": continue
@@ -212,12 +234,13 @@ def upsert_pending(conn, source, key, title, url, repo, labels, language, amount
 def collect(since_minutes=None, include_algora=True):
     conn = db()
     languages = ensure_languages(conn)
-    print("[collect] languages:", languages)
+    logger.info("[collect] languages: %s", languages)
 
     # GitHub
+    gh_new = 0
     try:
         for it in github_search(languages, since_minutes or WINDOW_MINUTES):
-            upsert_pending(
+            if upsert_pending(
                 conn,
                 source="github",
                 key=f"gh:{it['id']}",
@@ -226,35 +249,46 @@ def collect(since_minutes=None, include_algora=True):
                 repo=(it.get("repository_url","").split("repos/")[-1] if "repos/" in it.get("repository_url","") else ""),
                 labels=[l["name"] for l in it.get("labels", [])],
                 language=""
-            )
+            ):
+                gh_new += 1
     except requests.HTTPError as e:
-        print("[collect] GitHub error:", e)
+        logger.error("[collect] GitHub error: %s", e)
 
-    # Algora (optional; cannot filter by created date reliably)
+    # Algora
+    al_new = 0
     if include_algora:
         try:
             for b in algora_list():
-                upsert_pending(conn,
+                if upsert_pending(conn,
                     source=b["source"], key=b["id"], title=b["title"], url=b["url"],
                     repo=b["repo"], labels=b["labels"], language="",
                     amount=b.get("amount"), currency=b.get("currency"),
-                    created_at=b.get("created_at"))
+                    created_at=b.get("created_at")):
+                    al_new += 1
         except Exception as e:
-            print("[collect] Algora error:", e)
+            logger.error("[collect] Algora error: %s", e)
+
+    logger.info("[collect] inserted gh=%d, algora=%d", gh_new, al_new)
 
 # --------- Slack ---------
 def post_slack_bot(text: str):
     if not SLACK_BOT_TOKEN: return {"ok": False, "error": "no_bot_token"}
     url = "https://slack.com/api/chat.postMessage"
     headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-type": "application/json; charset=utf-8"}
-    r = requests.post(url, headers=headers, json={"channel": SLACK_CHANNEL, "text": text}, timeout=15)
+    payload = {"channel": SLACK_CHANNEL, "text": text}
+    if not SLACK_UNFURL:
+        payload.update({"unfurl_links": False, "unfurl_media": False})
+    r = requests.post(url, headers=headers, json=payload, timeout=15)
     try: return r.json()
     except Exception: return {"ok": False, "error": f"bad_json:{r.text[:200]}", "status": r.status_code}
 
 def post_slack_thread(ts: str, text: str):
     url = "https://slack.com/api/chat.postMessage"
     headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-type": "application/json; charset=utf-8"}
-    r = requests.post(url, headers=headers, json={"channel": SLACK_CHANNEL, "text": text, "thread_ts": ts}, timeout=15)
+    payload = {"channel": SLACK_CHANNEL, "text": text, "thread_ts": ts}
+    if not SLACK_UNFURL:
+        payload.update({"unfurl_links": False, "unfurl_media": False})
+    r = requests.post(url, headers=headers, json=payload, timeout=15)
     try: return r.json()
     except Exception: return {"ok": False}
 
@@ -308,7 +342,7 @@ def make_digest_text(rows, lookback_min: int):
 
 def write_csv(rows, target_dir: str):
     pathlib.Path(target_dir).mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%m%d%Y_%H%M")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
     path = os.path.join(target_dir, f"bounty_digest_{ts}.csv")
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -318,6 +352,7 @@ def write_csv(rows, target_dir: str):
             w.writerow([t, r["source"], r["repo"], r["title"], "|".join(r["labels"]), r["url"],
                         "" if r.get("amount") is None else r.get("amount"),
                         r.get("currency","")])
+    logger.info("[csv] wrote %s", path)
     return path
 
 def digest(lookback_override_min=None):
@@ -333,7 +368,7 @@ def digest(lookback_override_min=None):
                    LIMIT ?""", (since, MAX_ITEMS_IN_DIGEST))
     rows_raw = cur.fetchall()
     if len(rows_raw) < DIGEST_MIN_COUNT:
-        print("[digest] nothing to send"); return
+        logger.info("[digest] nothing to send"); return
 
     rows = []
     for r in rows_raw:
@@ -347,18 +382,24 @@ def digest(lookback_override_min=None):
 
     text, thread_details = make_digest_text(rows, lookback)
 
+    # post header
     res = post_slack_bot(text)
     posted, thread_ts = False, None
     if res.get("ok"):
         posted = True
         thread_ts = res.get("ts") or (res.get("message", {}) or {}).get("ts")
+        # if details are long, chunk into multiple thread replies
         if thread_details and POST_LONG_AS_THREAD and thread_ts:
-            post_slack_thread(thread_ts, thread_details)
+            for i, chunk in enumerate(chunk_text(thread_details, MAX_SLACK_CHARS)):
+                prefix = "" if i == 0 else "(cont.)\n"
+                post_slack_thread(thread_ts, prefix + chunk)
 
+    # webhook fallback (sends everything as one message)
     if not posted and SLACK_WEBHOOK_URL:
         res2 = post_slack_webhook(text if not thread_details else f"{text}\n\n{thread_details}")
         posted = res2.get("ok", False)
 
+    # CSV
     if WRITE_CSV:
         path = write_csv(rows, CSV_DIR)
         if posted and UPLOAD_CSV_TO_SLACK:
@@ -368,11 +409,11 @@ def digest(lookback_override_min=None):
         ids = [r["id"] for r in rows]
         conn.executemany("UPDATE pending SET notified=1 WHERE id=?", [(i,) for i in ids])
         conn.commit()
-        print(f"[digest] sent {len(ids)} item(s)")
+        logger.info("[digest] sent %d item(s)", len(ids))
     else:
-        print("[digest] failed to post; items remain un-notified")
+        logger.error("[digest] failed to post; items remain un-notified")
 
-# --------- test & bootstrap modes ---------
+# --------- test & bootstrap ---------
 def inject_dummy():
     conn = db()
     upsert_pending(conn,
@@ -384,19 +425,15 @@ def inject_dummy():
         language="Python",
         amount=123.0, currency="USD",
         created_at=int(time.time()))
-    print("[test] dummy row inserted")
+    logger.info("[test] dummy row inserted")
 
 def bootstrap():
-    """One-time backfill for last N days; collects + sends one big digest."""
     minutes = max(1, BOOTSTRAP_DAYS * 1440)
-    print(f"[bootstrap] collecting last {BOOTSTRAP_DAYS} day(s) ({minutes} minutes)…")
-    # For backfill: include Algora too (no created filter; will include *active* bounties)
+    logger.info("[bootstrap] collecting last %d day(s) (%d minutes)...", BOOTSTRAP_DAYS, minutes)
     collect(since_minutes=minutes, include_algora=True)
-    # Send digest for the same window
-    print("[bootstrap] sending digest…")
-    # You may want to temporarily raise MAX_ITEMS_IN_DIGEST in .env for this run.
+    logger.info("[bootstrap] sending digest…")
     digest(lookback_override_min=minutes)
-    print("[bootstrap] done")
+    logger.info("[bootstrap] done")
 
 # --------- main ---------
 if __name__ == "__main__":
@@ -405,10 +442,10 @@ if __name__ == "__main__":
             digest()
         elif MODE == "langs":
             conn = db()
-            print("[langs] profile languages:", ensure_languages(conn))
+            logger.info("[langs] profile languages: %s", ensure_languages(conn))
         elif MODE == "test_digest":
             inject_dummy()
-            digest(lookback_override_min=60)   # digest the last hour (includes dummy)
+            digest(lookback_override_min=60)
         elif MODE == "bootstrap":
             bootstrap()
         else:
