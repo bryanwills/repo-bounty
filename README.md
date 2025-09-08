@@ -52,16 +52,16 @@ pip3 install -r requirements.txt
 ```bash
 MODE=bootstrap /$HOME/repo-bounty/.venv/bin/python3 collector.py
 ```
-#### **Minimum required in `.env`:**
-#### - `GITHUB_TOKEN=` your PAT (fine‑grained: Public repos Read; Issues Read‑only; Metadata Read‑only)
-#### - One Slack delivery path:
-#### - `SLACK_BOT_TOKEN=` (recommended; scope `chat:write`, add `files:write` to upload CSVs), **and** invite the bot to the channel
-#### - or `SLACK_WEBHOOK_URL=` as a fallback
-#### - Paths in `.env.example` assume `$HOME/repo-bounty`.
+**Minimum required in `.env`:**
+  - `GITHUB_TOKEN=` your PAT (fine‑grained: Public repos Read; Issues Read‑only; Metadata Read‑only)
+  - One Slack delivery path:
+  - `SLACK_BOT_TOKEN=` (recommended; scope `chat:write`, add `files:write` to upload CSVs), **and** invite the bot to the channel
+  - or `SLACK_WEBHOOK_URL=` as a fallback
+  - Paths in `.env.example` assume `$HOME/repo-bounty`.
 
 ---
 
-#### 4) Running script to backfill info
+#### 4) Running script to backfill info and send to Slack and csv file.
 
 #### Collect and send a single digest for the last `BOOTSTRAP_DAYS` (defaults to 7):
 
@@ -113,38 +113,38 @@ MODE=digest "$HOME/repo-bounty/.venv/bin/python" collector.py
 
 ---
 
-### Configuration notes
+### Configuration notes. Modify .env file with the settings below.
 
-#### - **Language filtering**
-####   - `USE_PROFILE_LANGS=true` learns a small set of top languages from your GitHub profile.
-####   - `USE_LANGUAGE_FILTER=true|false` controls whether `language:` is used in Issue search. It can be over‑strict; set to `false` for backfills.
-####   - If no items are found and the language filter is on, the script retries **without** the filter.
+- **Language filtering**
+  - `USE_PROFILE_LANGS=true` learns a small set of top languages from your GitHub profile.
+  - `USE_LANGUAGE_FILTER=true|false` controls whether `language:` is used in Issue search. It can be over‑strict; set to `false` for backfills.
+  - If no items are found and the language filter is on, the script retries **without** the filter.
 
-#### - **Labels**
-####   - `LABELS=bounty,💎 Bounty,reward,algora` (OR‑combined). Tweak to your taste.
+- **Labels**
+  - `LABELS=bounty,💎 Bounty,reward,algora` (OR‑combined). Tweak to your taste.
 
-#### - **Repos**
-####   - Restrict to specific repos with `REPOS=owner/repo,owner2/repo2` (optional).
+- **Repos**
+  - Restrict to specific repos with `REPOS=owner/repo,owner2/repo2` (optional).
 
-#### - **Slack formatting**
-####   - `MAX_SLACK_CHARS` controls splitting; with `POST_LONG_AS_THREAD=false`, the script splits into multiple top‑level posts.
-####   - Set `SLACK_UNFURL=false` to suppress link previews.
+- **Slack formatting**
+  - `MAX_SLACK_CHARS` controls splitting; with `POST_LONG_AS_THREAD=false`, the script splits into multiple top‑level posts.
+  - Set `SLACK_UNFURL=false` to suppress link previews.
 
-#### - **CSV**
-####   - File names include a UTC timestamp: `bounty_digest_MMDDYYYY_HHMM.csv`.
-####   - Columns: `created_at_utc, source, repo, title, labels, url, amount, currency`.
+- **CSV**
+  - File names include a UTC timestamp: `bounty_digest_MMDDYYYY_HHMM.csv`.
+  - Columns: `created_at_utc, source, repo, title, labels, url, amount, currency`.
 
-#### - **Logging**
-####   - Logs are written per‑mode into `LOG_DIR` (e.g., `collect.log`, `digest.log`, `bootstrap.log`).
-####   - Set `LOG_LEVEL=DEBUG` to see the exact GitHub query URLs.
+- **Logging**
+  - Logs are written per‑mode into `LOG_DIR` (e.g., `collect.log`, `digest.log`, `bootstrap.log`).
+  - Set `LOG_LEVEL=DEBUG` to see the exact GitHub query URLs.
 
-#### - **Algora**
-####   - Add org slugs to `ALGORA_ORGS` (comma‑separated) to include **active** bounties from those orgs via the public API.
-####   - Leave empty to skip Algora.
+- **Algora**
+  - Add org slugs to `ALGORA_ORGS` (comma‑separated) to include **active** bounties from those orgs via the public API.
+  - Leave empty to skip Algora.
 
 ---
 
-### Troubleshooting
+#### Troubleshooting
 
 **No Slack messages appear**
 - Ensure the bot is **invited** to the target channel (`/invite @YourAppName`).
