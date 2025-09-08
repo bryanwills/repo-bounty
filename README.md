@@ -151,10 +151,10 @@ MODE=digest "$HOME/repo-bounty/.venv/bin/python" collector.py
 - Ensure the bot is **invited** to the target channel (`/invite @YourAppName`).
 - Verify `SLACK_BOT_TOKEN` (or `SLACK_WEBHOOK_URL`) in `.env`.
 - Check logs in `LOG_DIR/digest.log`.
-- Test message to channel with curl
+- Test message to channel with curl. Insert xoxb token (Slack App OAuth bot token) below.
 ```bash
 curl -X POST https://slack.com/api/chat.postMessage \
--H "Authorization: Bearer xoxb-token" \
+-H "Authorization: Bearer {xoxb-token}" \
 -H "Content-type: application/json; charset=utf-8" \
 --data '{"channel":"#bounties","text":"Hourly bounty digest ready ✅"}'
 ```
