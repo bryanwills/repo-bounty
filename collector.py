@@ -12,6 +12,9 @@ try:
 except Exception:
     pass
 
+# CSV formatting
+CSV_FILENAME_TZ = os.getenv("CSV_FILENAME_TZ", "LOCAL").upper()
+
 # --------- helpers ---------
 def env_bool(name: str, default: bool=False) -> bool:
     return str(os.getenv(name, "true" if default else "false")).lower() in ("1","true","yes","y","on")
@@ -34,6 +37,7 @@ def _clean_repos(csv_list):
         if re.match(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$', r):
             cleaned.append(r)
     return cleaned
+
 
 def chunk_text(text: str, limit: int):
     """Split long text into chunks <= limit, preferring line breaks."""
@@ -61,7 +65,8 @@ if not SLACK_BOT_TOKEN and not SLACK_WEBHOOK_URL:
 # --------- optional config ---------
 MODE                = os.getenv("MODE", "collect")
 GITHUB_USERNAME     = os.getenv("GITHUB_USERNAME", "bryanwills")
-USE_PROFILE_LANGS   = env_bool("USE_PROFILE_LANGS", True)
+USE_PROFILE_LANGS   = env_bool("USE_PROFILE_LANGS", False)
+USE_LANGUAGE_FILTER = env_bool("USE_LANGUAGE_FILTER", False)
 STATIC_LANGUAGES    = env_csv("STATIC_LANGUAGES", "TypeScript,Go,Python")
 LABELS              = env_csv("LABELS", "bounty,💎 Bounty,reward,algora")
 REPOS_LIST          = _clean_repos(env_csv("REPOS", ""))
@@ -74,7 +79,7 @@ SLACK_CHANNEL       = os.getenv("SLACK_CHANNEL", "#bounties")
 DIGEST_LOOKBACK_MIN = int(os.getenv("DIGEST_LOOKBACK_MIN", "60"))
 DIGEST_MIN_COUNT    = int(os.getenv("DIGEST_MIN_COUNT", "1"))
 MAX_ITEMS_IN_DIGEST = int(os.getenv("MAX_ITEMS_IN_DIGEST", "50"))
-MAX_SLACK_CHARS     = int(os.getenv("MAX_SLACK_CHARS", "3500"))
+MAX_SLACK_CHARS     = int(os.getenv("MAX_SLACK_CHARS", "5000"))
 POST_LONG_AS_THREAD = env_bool("POST_LONG_AS_THREAD", True)
 SLACK_UNFURL        = env_bool("SLACK_UNFURL", True)  # set false to suppress rich link previews
 
@@ -144,6 +149,8 @@ def fetch_profile_languages():
     return top or ["TypeScript","Go","Python"]
 
 def ensure_languages(conn):
+    if not USE_LANGUAGE_FILTER:
+        return []
     if USE_PROFILE_LANGS:
         cached = meta_get(conn, "profile_languages")
         ts     = meta_get(conn, "profile_languages_ts")
@@ -164,9 +171,11 @@ def github_search(languages, since_minutes):
         f'label:{_q(l)}' if (" " in l or l.startswith("💎") or ':' in l) else f"label:{l}"
         for l in LABELS
     ])
-    clauses.append(f"({label_or})")
+    # Also search for "bounty" in title or body
+    bounty_text = 'bounty in:title,body'
+    clauses.append(f"({label_or} OR {bounty_text})")
 
-    if languages:
+    if languages and USE_LANGUAGE_FILTER:
         clauses.append("(" + " OR ".join([f"language:{_q(l)}" for l in languages]) + ")")
 
     if REPOS_LIST:
@@ -340,9 +349,11 @@ def make_digest_text(rows, lookback_min: int):
     short = f"{header}\nSources: {dict(by_source)}\nTop repos: {top_repos}\n\n(Details in thread ⤵️)"
     return short, bullets
 
+# --------- csv --------
+
 def write_csv(rows, target_dir: str):
     pathlib.Path(target_dir).mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+    ts = datetime.now(timezone.utc).strftime("%m%d%Y_%H%M")
     path = os.path.join(target_dir, f"bounty_digest_{ts}.csv")
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)

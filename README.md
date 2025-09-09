@@ -2,18 +2,19 @@
 
 Polls GitHub for “bounty-ish” issues and Algora org bounties, stores them in SQLite, and posts a periodic Slack digest (+ optional CSV).
 
-- 🔎 **Filters**: label OR-filters, optional language filters (from your GitHub profile or a static list), optional repo allow-list  
-- 💬 **Slack**: single header message; auto-splits across messages when long (no threads if `POST_LONG_AS_THREAD=false`)  
-- 🗃️ **Storage**: SQLite (auto-created); CSV export stamped with UTC timestamp  
-- 🧪 **Modes**: `collect`, `digest`, `bootstrap`, `test_digest`, `langs`, `reset_recent`  
+- 🔎 **Filters**: label OR-filters, optional language filters (from your GitHub profile or a static list), optional repo allow-list
+- 💬 **Slack**: single header message; auto-splits across messages when long (no threads if `POST_LONG_AS_THREAD=false`)
+- 🗃️ **Storage**: SQLite (auto-created); CSV export stamped with UTC timestamp
+- 🧪 **Modes**: `collect`, `digest`, `bootstrap`, `test_digest`, `langs`, `reset_recent`
 - 🪵 **Logging**: per-mode log files in `LOG_DIR`
+- 🚀 **Enhanced Search**: Now searches for bounties in titles/descriptions, not just specific labels
 
 ---
 
 ### Prerequisites
 - Python **3.10+** (tested with 3.11)
 - A Slack app (bot token) or an incoming webhook URL
-  - Slack app needs Oauth permissions (recommended; scope `chat:write`, add `files:write` to and `group:read`) and bot token. 
+  - Slack app needs Oauth permissions (recommended; scope `chat:write`, add `files:write` to and `group:read`) and bot token.
 - A GitHub **Personal Access Token** (fine‑grained or classic)
 
 ---
@@ -142,6 +143,25 @@ MODE=digest "$HOME/repo-bounty/.venv/bin/python" collector.py
 - **Algora**
   - Add org slugs to `ALGORA_ORGS` (comma‑separated) to include **active** bounties from those orgs via the public API.
   - Leave empty to skip Algora.
+
+---
+
+## Recent Improvements (v2.0)
+
+### Enhanced Bounty Detection
+- **Broader Search**: Now searches for "bounty" in issue titles and descriptions, not just specific labels
+- **No Language Restrictions**: Set `USE_LANGUAGE_FILTER=false` to find bounties from all programming languages
+- **Improved Coverage**: Catches bounties that mention "bounty" anywhere in the issue content
+
+### Configuration Updates
+- Added `USE_LANGUAGE_FILTER` environment variable to control language filtering
+- Enhanced search query to include `bounty in:title,body` for better coverage
+- Fixed language filter logic to properly respect configuration settings
+
+### Performance Improvements
+- Fixed NameError issues that were preventing cronjobs from running
+- Improved error handling and logging
+- Better GitHub API query construction
 
 ---
 
